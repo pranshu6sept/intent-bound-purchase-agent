@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Intent-Bound Purchase Agent</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Airwallex Hackathon Demo</p>
+          <h1>Intent-Bound Purchase Agent</h1>
+        </div>
+        <span class="tag">Starter Kit 2</span>
+      </header>
+
+      <main class="layout">
+        <section class="panel form-panel">
+          <h2>Purchase policy inputs</h2>
+
+          <form id="purchase-form">
+            <div class="field-grid">
+              <label>
+                Available cash
+                <input type="number" id="availableCash" value="60000" required />
+              </label>
+
+              <label>
+                Reserve floor
+                <input type="number" id="reserveFloor" value="20000" required />
+              </label>
+
+              <label>
+                Annual cost
+                <input type="number" id="annualCost" value="28000" required />
+              </label>
+
+              <label>
+                Monthly cost
+                <input type="number" id="monthlyCost" value="5500" required />
+              </label>
+
+              <label>
+                Monthly overhead
+                <input type="number" id="monthlyOverhead" value="500" required />
+              </label>
+
+              <label>
+                Purchase intent
+                <select id="purchaseIntent">
+                  <option value="strategic">Strategic</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="noncritical">Non-critical</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="actions">
+              <button type="submit">Analyze purchase</button>
+              <button type="button" id="card-button" class="secondary">Create virtual card policy</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel result-panel">
+          <h2>Recommendations</h2>
+
+          <div id="loading" class="hidden">Calculating policy...</div>
+
+          <div id="result-box" class="result-box">
+            <div class="recommendation-pill" id="recommendation-pill">Monthly plan</div>
+            <p id="reason-text"></p>
+
+            <div class="metric-grid">
+              <div class="metric-card">
+                <span>Annual post-purchase cash</span>
+                <strong id="annualCash">$0</strong>
+              </div>
+              <div class="metric-card">
+                <span>Monthly post-purchase cash</span>
+                <strong id="monthlyCash">$0</strong>
+              </div>
+              <div class="metric-card">
+                <span>Reserve headroom</span>
+                <strong id="reserveHeadroom">$0</strong>
+              </div>
+              <div class="metric-card">
+                <span>Recommended source</span>
+                <strong id="recommendedSource">Monthly</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="policy-box">
+            <h3>Policy output</h3>
+            <pre id="policy-output">{}</pre>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
