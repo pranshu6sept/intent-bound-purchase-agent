@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Treasury-aware agent that picks annual vs monthly SaaS billing and issues a virtual card bound to that decision." />
     <title>Intent-Bound Purchase Agent</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -10,92 +11,151 @@
     <div class="container">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Airwallex Hackathon Demo</p>
+          <p class="eyebrow">Airwallex Agentic Banking · Starter Kit 2</p>
           <h1>Intent-Bound Purchase Agent</h1>
+          <p class="lede">
+            Decides between annual and monthly SaaS billing against your treasury policy, then issues a
+            virtual card that can only make the purchase it approved.
+          </p>
         </div>
-        <span class="tag">Starter Kit 2</span>
+        <span class="tag" id="mode-tag">Checking issuer…</span>
       </header>
 
       <main class="layout">
-        <section class="panel form-panel">
-          <h2>Purchase policy inputs</h2>
+        <section class="panel" aria-labelledby="intent-heading">
+          <h2 id="intent-heading"><span class="step">1</span> Purchase intent</h2>
 
-          <form id="purchase-form">
+          <div class="presets" role="group" aria-label="Demo scenarios">
+            <span class="muted">Try a scenario:</span>
+            <button type="button" class="chip" data-preset="fits">Annual fits</button>
+            <button type="button" class="chip" data-preset="breach">Annual breaches reserve</button>
+            <button type="button" class="chip" data-preset="tight">Nice-to-have, tight cash</button>
+          </div>
+
+          <form id="purchase-form" novalidate>
             <div class="field-grid">
-              <label>
-                Available cash
-                <input type="number" id="availableCash" value="60000" required />
+              <label class="span-2">
+                Vendor
+                <input type="text" name="vendor" maxlength="80" autocomplete="off" />
               </label>
 
               <label>
-                Reserve floor
-                <input type="number" id="reserveFloor" value="20000" required />
+                Available cash (USD)
+                <input type="number" name="availableCash" min="0" step="0.01" required />
               </label>
 
               <label>
-                Annual cost
-                <input type="number" id="annualCost" value="28000" required />
+                Reserve floor (USD)
+                <input type="number" name="reserveFloor" min="0" step="0.01" required />
               </label>
 
               <label>
-                Monthly cost
-                <input type="number" id="monthlyCost" value="5500" required />
+                Annual plan price
+                <input type="number" name="annualCost" min="0" step="0.01" required />
+              </label>
+
+              <label>
+                Monthly plan price
+                <input type="number" name="monthlyCost" min="0" step="0.01" required />
               </label>
 
               <label>
                 Monthly overhead
-                <input type="number" id="monthlyOverhead" value="500" required />
+                <input type="number" name="monthlyOverhead" min="0" step="0.01" />
+                <small class="hint">Extra cost per month of monthly billing (admin, fees).</small>
               </label>
 
               <label>
                 Purchase intent
-                <select id="purchaseIntent">
-                  <option value="strategic">Strategic</option>
-                  <option value="urgent">Urgent</option>
-                  <option value="noncritical">Non-critical</option>
-                </select>
+                <select name="purchaseIntent"></select>
+                <small class="hint" id="intent-hint"></small>
               </label>
             </div>
 
             <div class="actions">
-              <button type="submit">Analyze purchase</button>
-              <button type="button" id="card-button" class="secondary">Create virtual card policy</button>
+              <button type="submit" class="primary">Analyze purchase</button>
+              <span id="loading" class="loading hidden" role="status">Evaluating policy…</span>
             </div>
           </form>
         </section>
 
-        <section class="panel result-panel">
-          <h2>Recommendations</h2>
+        <section class="panel" aria-labelledby="decision-heading">
+          <h2 id="decision-heading"><span class="step">2</span> Agent decision</h2>
 
-          <div id="loading" class="hidden">Calculating policy...</div>
+          <div id="error" class="alert hidden" role="alert"></div>
 
-          <div id="result-box" class="result-box">
-            <div class="recommendation-pill" id="recommendation-pill">Monthly plan</div>
-            <p id="reason-text"></p>
+          <div id="decision" aria-live="polite">
+            <span class="pill" id="decision-pill">—</span>
+            <p id="reason-text" class="reason"></p>
 
             <div class="metric-grid">
               <div class="metric-card">
-                <span>Annual post-purchase cash</span>
-                <strong id="annualCash">$0</strong>
+                <span>Cash after annual</span>
+                <strong id="annual-cash">—</strong>
               </div>
               <div class="metric-card">
-                <span>Monthly post-purchase cash</span>
-                <strong id="monthlyCash">$0</strong>
+                <span>Cash after first monthly charge</span>
+                <strong id="monthly-cash">—</strong>
               </div>
               <div class="metric-card">
-                <span>Reserve headroom</span>
-                <strong id="reserveHeadroom">$0</strong>
+                <span id="headroom-label">Headroom on chosen plan</span>
+                <strong id="headroom">—</strong>
               </div>
               <div class="metric-card">
-                <span>Recommended source</span>
-                <strong id="recommendedSource">Monthly</strong>
+                <span>12-month savings with annual</span>
+                <strong id="savings">—</strong>
               </div>
             </div>
+
+            <h3>Policy checks</h3>
+            <ul id="checks" class="checks"></ul>
+          </div>
+        </section>
+
+        <section class="panel span-full" aria-labelledby="card-heading">
+          <div class="card-head">
+            <div>
+              <h2 id="card-heading"><span class="step">3</span> Intent-bound virtual card</h2>
+              <p class="muted">
+                You approve, the agent issues. The card's authorization controls encode the decision, so it cannot be
+                used for any other amount, merchant type, or time window.
+              </p>
+            </div>
+            <button type="button" id="card-button" class="primary" disabled>Approve &amp; issue card</button>
           </div>
 
-          <div class="policy-box">
-            <h3>Policy output</h3>
-            <pre id="policy-output">{}</pre>
+          <div id="card-result" class="card-result hidden">
+            <div class="virtual-card" id="virtual-card">
+              <div class="vc-row">
+                <span class="vc-brand">Airwallex · Virtual</span>
+                <span class="vc-mode" id="vc-mode"></span>
+              </div>
+              <div class="vc-vendor" id="vc-vendor"></div>
+              <div class="vc-limit" id="vc-limit"></div>
+              <div class="vc-row vc-meta">
+                <span id="vc-usage"></span>
+                <span id="vc-valid"></span>
+              </div>
+            </div>
+
+            <div class="card-details">
+              <p id="card-summary" class="reason"></p>
+              <p id="card-note" class="note hidden"></p>
+              <dl class="controls">
+                <dt>Card ID</dt>
+                <dd id="card-id"></dd>
+                <dt>Transaction limits</dt>
+                <dd id="card-limits"></dd>
+                <dt>Allowed merchant categories</dt>
+                <dd id="card-mccs"></dd>
+                <dt>Active window</dt>
+                <dd id="card-window"></dd>
+              </dl>
+              <details>
+                <summary>Airwallex create-card request</summary>
+                <pre id="card-json"></pre>
+              </details>
+            </div>
           </div>
         </section>
       </main>

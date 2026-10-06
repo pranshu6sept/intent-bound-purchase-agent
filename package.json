@@ -1,7 +1,7 @@
 {
   "name": "intent-bound-purchase-agent",
   "version": "1.0.0",
-  "description": "Airwallex sandbox demo for Starter Kit 2: Intent-Bound Purchase Agent",
+  "description": "Treasury-aware agent that picks annual vs monthly SaaS billing and issues an Airwallex virtual card bound to that decision",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -14,12 +14,13 @@
     "agentic-banking",
     "purchase-agent"
   ],
-  "author": "Purchase Agent",
+  "author": "pranshu6sept",
   "license": "MIT",
   "dependencies": {
-    "axios": "^1.7.7",
     "dotenv": "^16.4.5",
-    "express": "^4.21.2",
-    "uuid": "^11.0.2"
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
