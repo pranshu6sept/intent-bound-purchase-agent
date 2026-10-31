@@ -74,6 +74,18 @@ The UI has one-click presets:
 
 Try switching **Annual fits** to *Urgent*: 19.5% savings is below the 20% bar, so the agent switches to monthly.
 
+### Try "Extract with AI"
+
+With `GROQ_API_KEY` set, paste this into the quote box and click **Extract with AI** instead of filling the form by hand:
+
+```
+Finance wants to lock in Acme Analytics. Annual is $28,000, or $2,800/month plus a $100/month
+admin fee if we go monthly. We're sitting on $60,000 in cash and keep a $20,000 reserve floor.
+This is a core tool we've already piloted, so it's a strategic buy, not a gamble.
+```
+
+It should fill in vendor `Acme Analytics`, cash `60000`, reserve floor `20000`, annual `28000`, monthly `2800`, overhead `100`, and intent `strategic` — matching the "Annual fits" preset. Edit any field afterward before approving; the extractor only pre-fills the form, it never approves on its own.
+
 ## Airwallex sandbox setup
 
 ```bash
