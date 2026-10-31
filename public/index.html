@@ -32,6 +32,19 @@
             <button type="button" class="chip" data-preset="tight">Nice-to-have, tight cash</button>
           </div>
 
+          <div class="extractor">
+            <label for="quote-text">Or paste a quote, email, or request</label>
+            <textarea
+              id="quote-text"
+              rows="3"
+              placeholder="e.g. Finance wants Acme Analytics. Annual is $28k, monthly is $2,800 plus $100 admin. We have $60k cash and keep a $20k reserve. It's a core tool we've already piloted."
+            ></textarea>
+            <div class="actions">
+              <button type="button" id="extract-button" class="secondary">Extract with AI</button>
+              <span id="extract-status" class="loading hidden" role="status">Extracting…</span>
+            </div>
+          </div>
+
           <form id="purchase-form" novalidate>
             <div class="field-grid">
               <label class="span-2">
@@ -157,6 +170,15 @@
               </details>
             </div>
           </div>
+        </section>
+        <section class="panel span-full" aria-labelledby="history-heading">
+          <div class="card-head">
+            <div>
+              <h2 id="history-heading"><span class="step">4</span> Decision history</h2>
+              <p class="muted">Every approve-and-issue decision the agent has made, most recent first.</p>
+            </div>
+          </div>
+          <ul id="audit-list" class="audit-list"></ul>
         </section>
       </main>
     </div>

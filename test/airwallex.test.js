@@ -23,7 +23,7 @@ function fakeFetch(routes) {
   const calls = [];
   const fetchImpl = async (url, options) => {
     const path = new URL(url).pathname.replace('/api/v1', '');
-    calls.push({ path, headers: options.headers, body: JSON.parse(options.body) });
+    calls.push({ path, method: options.method, headers: options.headers, body: options.body ? JSON.parse(options.body) : undefined });
     const [status, body] = routes[path] || [404, { message: 'not found' }];
     return new Response(JSON.stringify(body), { status });
   };
@@ -107,4 +107,58 @@ test('falls back to a mock card and explains why when the sandbox rejects the re
   const card = await issuer.issueCard(CARD_POLICY);
   assert.equal(card.mode, 'mock');
   assert.match(card.fallbackReason, /Invalid credentials/);
+});
+
+test('getCardLimits returns mock limits without credentials and never calls the network', async () => {
+  const { calls, fetchImpl } = fakeFetch({});
+  const issuer = createAirwallexIssuer({ env: {}, fetchImpl });
+
+  const result = await issuer.getCardLimits('card_1');
+  assert.equal(result.mode, 'mock');
+  assert.deepEqual(result.limits, []);
+  assert.equal(calls.length, 0);
+});
+
+test('getCardLimits fetches the real limits in sandbox mode', async () => {
+  const { calls, fetchImpl } = fakeFetch({
+    '/authentication/login': [201, { token: 'tok', expires_at: new Date(Date.now() + 30 * 60_000).toISOString() }],
+    '/issuing/cards/card_1/limits': [200, { currency: 'USD', limits: [{ amount: 28000, interval: 'ALL_TIME', remaining: 28000 }] }]
+  });
+  const issuer = createAirwallexIssuer({ env: SANDBOX_ENV, fetchImpl });
+
+  const result = await issuer.getCardLimits('card_1');
+  assert.equal(result.mode, 'sandbox');
+  assert.deepEqual(result.limits, [{ amount: 28000, interval: 'ALL_TIME', remaining: 28000 }]);
+  assert.equal(calls.find((call) => call.path === '/issuing/cards/card_1/limits').method, 'GET');
+});
+
+test('simulateAuthorization clears at or under the limit and declines over it, in mock mode', async () => {
+  const { fetchImpl } = fakeFetch({});
+  const issuer = createAirwallexIssuer({ env: {}, fetchImpl });
+
+  const atLimit = await issuer.simulateAuthorization({ cardId: 'card_1', amount: 28000, limitAmount: 28000 });
+  assert.equal(atLimit.status, 'APPROVED');
+  assert.equal(atLimit.transaction_type, 'CLEARING');
+
+  const overLimit = await issuer.simulateAuthorization({ cardId: 'card_1', amount: 28001, limitAmount: 28000 });
+  assert.equal(overLimit.status, 'FAILED');
+  assert.equal(overLimit.failure_reason, 'LIMIT_EXCEEDED');
+});
+
+test('simulateAuthorization sends a fresh request_id and surfaces the sandbox result', async () => {
+  const { calls, fetchImpl } = fakeFetch({
+    '/authentication/login': [201, { token: 'tok', expires_at: new Date(Date.now() + 30 * 60_000).toISOString() }],
+    '/simulation/issuing/create': [201, { status: 'FAILED', transaction_type: 'AUTHORIZATION', transaction_amount: 28001, transaction_currency: 'USD', failure_reason: 'LIMIT_EXCEEDED', transaction_id: 'txn_1' }]
+  });
+  const issuer = createAirwallexIssuer({ env: SANDBOX_ENV, fetchImpl });
+
+  const result = await issuer.simulateAuthorization({ cardId: 'card_1', amount: 28001 });
+  assert.equal(result.mode, 'sandbox');
+  assert.equal(result.status, 'FAILED');
+  assert.equal(result.failure_reason, 'LIMIT_EXCEEDED');
+
+  const simulateCall = calls.find((call) => call.path === '/simulation/issuing/create');
+  assert.equal(simulateCall.body.card_id, 'card_1');
+  assert.equal(simulateCall.body.single_phase, true);
+  assert.ok(simulateCall.body.request_id);
 });

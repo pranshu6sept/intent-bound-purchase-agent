@@ -18,9 +18,11 @@ flowchart LR
     D -->|none or call fails| F[Mock card<br/>with fallback reason]
 ```
 
+0. **Extract (optional).** Paste a quote, email, or Slack message and an LLM (via Groq) pulls out vendor, prices, cash position and intent into the form for you to review. This never bypasses evaluation — it only pre-fills the same form a human can edit before anything is approved.
 1. **Evaluate.** The policy engine checks each plan against the reserve floor, compares 12-month cost, and applies the intent's risk rules. It returns a decision (`annual`, `monthly` or `blocked`), a plain-English reason, and a list of pass/fail policy checks.
 2. **Approve.** The operator reviews the decision in the UI and clicks **Approve & issue card**. This is the human-in-the-loop step.
 3. **Enforce.** The server re-runs the evaluation from the raw inputs (it never trusts a client-supplied decision) and turns it into Airwallex `authorization_controls`.
+4. **Record.** Every approve-and-issue decision (card issued or blocked) is appended to an audit log on disk, visible in the UI's decision history panel.
 
 ### Decision rules
 
@@ -55,10 +57,10 @@ Requires Node.js 20 or later.
 ```bash
 npm install
 npm start          # http://localhost:3000
-npm test           # 26 tests: policy engine, Airwallex client, HTTP API
+npm test           # 42 tests: policy engine, Airwallex client, audit log, intent extractor, HTTP API
 ```
 
-Without credentials the app runs in **mock mode**. It shows exactly the create-card request it would send to Airwallex and labels the card as mock.
+Without Airwallex credentials the app runs in **mock mode**. It shows exactly the create-card request it would send to Airwallex and labels the card as mock. Without a `GROQ_API_KEY`, the "Extract with AI" button is disabled and the form works manually as before.
 
 ### Demo scenarios
 
@@ -86,6 +88,8 @@ cp .env.example .env
 | `AWX_CARDHOLDER_EMAIL` | No | Email for the auto-created cardholder |
 | `AWX_CARD_CREATED_BY` | No | `created_by` value on card requests (Airwallex expects a full legal name) |
 | `PORT` | No | Defaults to `3000` |
+| `GROQ_API_KEY` | No | Enables "Extract with AI": parses a pasted quote/email into the purchase form via Groq |
+| `GROQ_MODEL` | No | Defaults to `llama-3.3-70b-versatile` |
 
 Integration safeguards:
 
@@ -97,6 +101,22 @@ Integration safeguards:
 
 The card program is set to `COMMERCIAL` / `CREDIT` / `GOOD_FUNDS_CREDIT`, following the Airwallex commercial cards guide. If your sandbox account uses a different program, change `CARD_PROGRAM` in [src/airwallex.js](src/airwallex.js).
 
+Once `AWX_CLIENT_ID` and `AWX_API_KEY` are set, verify the real sandbox round-trip (login → delegate cardholder → create card) outside the app:
+
+```bash
+npm run smoke:airwallex
+```
+
+It prints the issuer mode and either a created `card_id`/`cardholder_id`, or the exact failed call and a troubleshooting hint (bad credentials, missing Issuing permissions, or a `CARD_PROGRAM` mismatch).
+
+To see the full decision -> card -> enforcement loop, including that an over-limit authorization actually declines and an at-limit one clears:
+
+```bash
+npm run demo:authorizations
+```
+
+It evaluates a purchase, issues a card for the decision, simulates one authorization above the card's limit (expect `status: FAILED`, `failure_reason: LIMIT_EXCEEDED`) and one at the limit (expect `transaction_type: CLEARING` — per Airwallex, limits are inclusive and `CLEARING` is the signal to treat as accepted, not `APPROVED`), then fetches the card's limits back from Airwallex to confirm they match what was requested. It works in mock mode too, as a dry run of the same logic.
+
 ## API
 
 All endpoints take and return JSON. Amounts are in USD major units.
@@ -104,9 +124,11 @@ All endpoints take and return JSON. Amounts are in USD major units.
 | Method | Path | Description |
 | --- | --- | --- |
 | `GET` | `/api/health` | Liveness and issuer mode (`sandbox` or `mock`) |
-| `GET` | `/api/config` | Intent definitions and issuer mode for the UI |
+| `GET` | `/api/config` | Intent definitions, issuer mode, and extractor mode for the UI |
 | `POST` | `/api/recommendation` | Evaluate a purchase. `200` with the decision, `400` with field errors |
-| `POST` | `/api/virtual-card` | Evaluate and issue a card. `201` with `{ evaluation, cardPolicy, card }`, `422` if blocked, `400` on invalid input |
+| `POST` | `/api/virtual-card` | Evaluate and issue a card. `201` with `{ evaluation, cardPolicy, card }`, `422` if blocked, `400` on invalid input. Records the outcome to the audit log |
+| `GET` | `/api/audit-log` | Last 50 approve-and-issue decisions (card issued or blocked), newest first |
+| `POST` | `/api/extract-purchase` | `{ text }` → `{ fields }` parsed via Groq. `503` if no `GROQ_API_KEY`, `502` if the model call fails or returns nothing usable |
 
 Request body for both `POST` endpoints:
 
@@ -127,9 +149,11 @@ Request body for both `POST` endpoints:
 ## Project structure
 
 ```
-server.js                 Entry point: loads .env, wires the issuer, starts Express
+server.js                 Entry point: loads .env, wires the issuer/audit log/extractor, starts Express
 src/policyEngine.js       Input validation, decision rules, card policy builder (pure functions)
-src/airwallex.js          Airwallex Issuing client with sandbox guard and mock fallback
+src/airwallex.js          Airwallex Issuing client: cards, simulated authorizations, limits, sandbox guard, mock fallback
+src/auditLog.js           Append-only JSON-lines log of approve-and-issue decisions
+src/intentExtractor.js    Groq-based extraction of purchase fields from free text, with a disabled fallback
 src/app.js                Express routes and JSON error handling
 public/                   Single-page UI (no build step)
 test/                     node:test suites
@@ -138,9 +162,10 @@ test/                     node:test suites
 ## Limitations and next steps
 
 - Merchant category codes restrict the card to software merchants, not to one specific vendor. A production version would add merchant ID allow-lists or post-authorization checks.
-- Decisions are not persisted. An audit log of evaluations and approvals would be the next step for finance teams.
+- The audit log is a local JSON-lines file, not a database; it is enough to demo "every decision is recorded" but won't survive a multi-instance deployment.
 - Single currency (USD) and a single reserve snapshot. The policy could pull live balances and cash-flow forecasts from Airwallex.
-- Intent is chosen from a fixed list. An LLM could extract intent, vendor and pricing from a quote or chat request and pass them into the same deterministic policy engine.
+- The LLM extractor fills the form for a human to review; it never evaluates or approves on its own. A production version would also flag low-confidence extractions.
+- **Sandbox accounts need Issuing explicitly enabled by Airwallex** before `/issuing/cards/create` will accept any `program.type` (`PREPAID`, `DEBIT`, and `CREDIT` all return "Your account is not allowed to set this card type" until then). `npm run demo:authorizations` still runs end to end against the mock fallback in the meantime, exercising the same decline/clear logic Airwallex's sandbox would enforce.
 
 ## License
 

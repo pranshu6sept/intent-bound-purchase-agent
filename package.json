@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "smoke:airwallex": "node scripts/smoke-test-airwallex.js",
+    "demo:authorizations": "node scripts/demo-authorizations.js"
   },
   "keywords": [
     "airwallex",

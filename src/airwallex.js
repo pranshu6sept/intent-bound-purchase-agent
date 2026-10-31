@@ -40,11 +40,11 @@ function createAirwallexIssuer({ env = process.env, fetchImpl = globalThis.fetch
   let tokenExpiresAt = 0;
   let cardholderId = config.cardholderId || null;
 
-  async function request(path, { body, headers = {} }) {
+  async function request(path, { method = 'POST', body, headers = {} }) {
     const response = await fetchImpl(`${config.baseUrl}${path}`, {
-      method: 'POST',
+      method,
       headers: { 'Content-Type': 'application/json', ...headers },
-      body: JSON.stringify(body),
+      body: method === 'GET' ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
     });
 
@@ -80,6 +80,10 @@ function createAirwallexIssuer({ env = process.env, fetchImpl = globalThis.fetch
 
   async function authedRequest(path, body) {
     return request(path, { body, headers: { Authorization: `Bearer ${await getToken()}` } });
+  }
+
+  async function authedGet(path) {
+    return request(path, { method: 'GET', headers: { Authorization: `Bearer ${await getToken()}` } });
   }
 
   // Reuses AWX_CARDHOLDER_ID when provided, otherwise creates one delegate
@@ -138,10 +142,68 @@ function createAirwallexIssuer({ env = process.env, fetchImpl = globalThis.fetch
     }
   }
 
+  async function getCardLimits(cardId) {
+    if (mockReason) return { mode: 'mock', fallbackReason: mockReason, currency: 'USD', limits: [] };
+
+    try {
+      const data = await authedGet(`/issuing/cards/${cardId}/limits`);
+      return { mode: 'sandbox', currency: data.currency, limits: data.limits || [] };
+    } catch (error) {
+      logger.error('Airwallex get card limits failed:', error.message);
+      return {
+        mode: 'mock',
+        fallbackReason: `Airwallex sandbox call failed, showing no limits. ${error.message}`,
+        currency: 'USD',
+        limits: []
+      };
+    }
+  }
+
+  // limitAmount is the amount the caller expects the card to be capped at (known from
+  // the card policy it built). It drives the mock decision; sandbox mode ignores it and
+  // lets Airwallex's own authorization controls decide.
+  function mockSimulation({ amount, currency, limitAmount }) {
+    const withinLimit = limitAmount == null || amount <= limitAmount;
+    return withinLimit
+      ? { mode: 'mock', status: 'APPROVED', transaction_type: 'CLEARING', transaction_amount: amount, transaction_currency: currency, failure_reason: null }
+      : { mode: 'mock', status: 'FAILED', transaction_type: 'AUTHORIZATION', transaction_amount: amount, transaction_currency: currency, failure_reason: 'LIMIT_EXCEEDED' };
+  }
+
+  async function simulateAuthorization({ cardId, amount, currency = 'USD', limitAmount, requestId = crypto.randomUUID() }) {
+    if (mockReason) return mockSimulation({ amount, currency, limitAmount });
+
+    try {
+      const data = await authedRequest('/simulation/issuing/create', {
+        request_id: requestId,
+        card_id: cardId,
+        transaction_amount: amount,
+        transaction_currency: currency,
+        single_phase: true
+      });
+      return {
+        mode: 'sandbox',
+        status: data.status,
+        transaction_type: data.transaction_type,
+        transaction_amount: data.transaction_amount,
+        transaction_currency: data.transaction_currency,
+        failure_reason: data.failure_reason || null,
+        transaction_id: data.transaction_id
+      };
+    } catch (error) {
+      logger.error('Airwallex simulate authorization failed:', error.message);
+      return {
+        ...mockSimulation({ amount, currency, limitAmount }),
+        fallbackReason: `Airwallex sandbox call failed, showing a mock simulation instead. ${error.message}`
+      };
+    }
+  }
+
   return {
     mode: mockReason ? 'mock' : 'sandbox',
     mockReason,
-    issueCard
+    issueCard,
+    getCardLimits,
+    simulateAuthorization
   };
 }
 

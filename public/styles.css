@@ -225,6 +225,82 @@ button:disabled {
   color: white;
 }
 
+.secondary {
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.extractor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.extractor label {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.extractor textarea {
+  background: var(--field);
+  color: var(--text);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font: inherit;
+  resize: vertical;
+}
+
+.extractor .actions {
+  margin-top: 0;
+}
+
+.audit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.audit-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--inset);
+  border: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.audit-row.annual {
+  border-left: 3px solid var(--blue);
+}
+
+.audit-row.monthly {
+  border-left: 3px solid var(--green);
+}
+
+.audit-row.blocked {
+  border-left: 3px solid var(--red);
+}
+
+.audit-when {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.audit-empty {
+  padding: 10px 14px;
+}
+
 .chip {
   padding: 6px 12px;
   border-radius: 999px;

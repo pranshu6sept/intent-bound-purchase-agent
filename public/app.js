@@ -36,6 +36,8 @@ const form = $('purchase-form');
 const intentSelect = form.elements.purchaseIntent;
 const submitButton = form.querySelector('button[type="submit"]');
 const cardButton = $('card-button');
+const extractButton = $('extract-button');
+const quoteText = $('quote-text');
 
 let intents = {};
 let lastEvaluation = null;
@@ -227,6 +229,68 @@ async function issueCard() {
     if (seq === requestSeq) showError('Could not reach the agent. Is the server running?');
   } finally {
     if (seq === requestSeq) setLoading(false);
+    loadAuditLog();
+  }
+}
+
+async function extractPurchase() {
+  const text = quoteText.value.trim();
+  if (!text) return;
+
+  clearError();
+  extractButton.disabled = true;
+  $('extract-status').classList.remove('hidden');
+
+  try {
+    const { ok, data } = await postJson('/api/extract-purchase', { text });
+    if (!ok) {
+      showError(data.message || 'Could not extract purchase details from that text.');
+      return;
+    }
+    fillForm(data.fields);
+    hideCard();
+    await analyze();
+  } catch {
+    showError('Could not reach the agent. Is the server running?');
+  } finally {
+    extractButton.disabled = false;
+    $('extract-status').classList.add('hidden');
+  }
+}
+
+function renderAuditLog(entries) {
+  const list = $('audit-list');
+  if (entries.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'muted audit-empty';
+    empty.textContent = 'No decisions yet.';
+    list.replaceChildren(empty);
+    return;
+  }
+
+  const ENTRY_LABELS = { blocked: 'Blocked', card_issued: 'Card issued' };
+  const rows = entries.map((entry) => {
+    const item = document.createElement('li');
+    item.className = `audit-row ${entry.recommendation || ''}`;
+    const when = document.createElement('span');
+    when.className = 'audit-when';
+    when.textContent = new Date(entry.at).toLocaleString();
+    const what = document.createElement('span');
+    what.className = 'audit-what';
+    what.textContent = `${ENTRY_LABELS[entry.type] || entry.type} · ${entry.vendor} · ${entry.recommendation || 'blocked'}`;
+    item.append(when, what);
+    return item;
+  });
+  list.replaceChildren(...rows);
+}
+
+async function loadAuditLog() {
+  try {
+    const response = await fetch('/api/audit-log');
+    const data = await response.json();
+    renderAuditLog(data.entries || []);
+  } catch {
+    // Non-critical: leave whatever was last rendered in place.
   }
 }
 
@@ -242,6 +306,11 @@ async function init() {
     tag.textContent = config.issuerMode === 'sandbox' ? 'Airwallex sandbox' : 'Mock issuer';
     tag.classList.add(config.issuerMode);
     if (config.issuerNote) tag.title = config.issuerNote;
+
+    if (config.extractorMode !== 'llm') {
+      extractButton.disabled = true;
+      extractButton.title = config.extractorNote || 'AI extraction is not configured.';
+    }
   } catch {
     showError('Could not load agent configuration. Is the server running?');
     return;
@@ -249,6 +318,7 @@ async function init() {
 
   fillForm(PRESETS.fits);
   await analyze();
+  await loadAuditLog();
 }
 
 form.addEventListener('submit', (event) => {
@@ -275,5 +345,6 @@ document.querySelectorAll('[data-preset]').forEach((button) => {
 });
 
 cardButton.addEventListener('click', issueCard);
+extractButton.addEventListener('click', extractPurchase);
 
 init();
